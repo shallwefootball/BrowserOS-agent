@@ -21,7 +21,7 @@ const SettingsModalPropsSchema = z.object({
 type SettingsModalProps = z.infer<typeof SettingsModalPropsSchema>
 
 export function SettingsModal({ isOpen, onClose, onOpenHelp }: SettingsModalProps) {
-  const { fontSize, theme, autoScroll, autoCollapseTools, chatMode, setFontSize, setTheme, setAutoScroll, setAutoCollapseTools, setChatMode } = useSettingsStore()
+  const { fontSize, theme, autoScroll, autoCollapseTools, chatMode, customInstructions, setFontSize, setTheme, setAutoScroll, setAutoCollapseTools, setChatMode, setCustomInstructions } = useSettingsStore()
   const [glowEnabled, setGlowEnabled] = useState<boolean>(true)
   const [agentVersion, setAgentVersion] = useState<string>('1.0.0')
   const { sendMessage } = useSidePanelPortMessaging()
@@ -217,10 +217,28 @@ export function SettingsModal({ isOpen, onClose, onOpenHelp }: SettingsModalProp
             </Button>
           </div>
 
-          
+
           </div>
 
-          
+          {/* Custom Instructions */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">Custom Instructions</h3>
+            <div className="p-4 rounded-xl bg-card border border-border/50 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Add custom instructions for the AI assistant. These will be included in every conversation.
+              </p>
+              <textarea
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="예: 항상 한국어로 응답해주세요&#10;간결하게 답변해주세요"
+                className="w-full h-24 px-3 py-2 text-sm bg-background border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand/50 placeholder:text-muted-foreground/50"
+                aria-label="Custom instructions for AI assistant"
+              />
+              <p className="text-xs text-muted-foreground">
+                Changes apply to new conversations
+              </p>
+            </div>
+          </div>
 
           {/* Font Size */}
           <div className="space-y-3">

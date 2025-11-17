@@ -15,10 +15,15 @@ interface ExtractedPageContext {
 /**
  * Generate simple system prompt that defines the assistant's role
  * This is added ONCE at the beginning of a fresh conversation
+ * @param customInstructions - Optional custom instructions from user settings
  */
-export function generateSystemPrompt(): string {
-  return `You are a helpful AI assistant for answering questions and providing information.
+export function generateSystemPrompt(customInstructions?: string): string {
+  const customSection = customInstructions && customInstructions.trim()
+    ? `\n\n## Custom Instructions from User\n${customInstructions.trim()}\n`
+    : ''
 
+  return `You are a helpful AI assistant for answering questions and providing information.
+${customSection}
 ## Your Capabilities
 - Answer questions naturally and conversationally
 - Analyze and understand web page content when it's available
