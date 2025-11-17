@@ -59,8 +59,27 @@ export class ChatAgent {
     this.toolManager.register(ScreenshotTool(this.executionContext))
     this.toolManager.register(ScrollTool(this.executionContext))
     this.toolManager.register(PdfExtractTool(this.executionContext))
-    
+
     Logging.log('ChatAgent', `Registered ${this.toolManager.getAll().length} tools for Q&A mode`)
+  }
+
+  /**
+   * Read custom instructions from Chrome storage
+   */
+  private async _getCustomInstructions(): Promise<string> {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage?.local?.get('nxtscape-custom-instructions', (result) => {
+          if (result && result['nxtscape-custom-instructions']) {
+            resolve(result['nxtscape-custom-instructions'])
+          } else {
+            resolve('')
+          }
+        })
+      } catch (_e) {
+        resolve('')
+      }
+    })
   }
 
   /**
@@ -105,8 +124,11 @@ export class ChatAgent {
           // Fresh conversation: Clear and add simple system prompt once
           this.messageManager.clear()
 
-          // Simple system prompt - just sets the role
-          const systemPrompt = generateSystemPrompt()
+          // Get custom instructions from Chrome storage
+          const customInstructions = await this._getCustomInstructions()
+
+          // Simple system prompt - just sets the role (with optional custom instructions)
+          const systemPrompt = generateSystemPrompt(customInstructions)
           this.messageManager.addSystem(systemPrompt)
 
           // Add page context as browser state message (only if tabs exist)

@@ -9,7 +9,8 @@ const SettingsSchema = z.object({
   autoScroll: z.boolean().default(true),  // Auto-scroll chat to bottom
   autoCollapseTools: z.boolean().default(false),  // Auto-collapse tool results
   chatMode: z.boolean().default(false),  // Legacy: Chat mode for Q&A (kept for backwards compatibility)
-  appMode: z.enum(['chat', 'agent', 'teach']).default('agent')  // Current app mode
+  appMode: z.enum(['chat', 'agent', 'teach']).default('agent'),  // Current app mode
+  customInstructions: z.string().default('')  // Custom system prompt instructions
 })
 
 type Settings = z.infer<typeof SettingsSchema>
@@ -22,6 +23,7 @@ interface SettingsActions {
   setAutoCollapseTools: (enabled: boolean) => void
   setChatMode: (enabled: boolean) => void
   setAppMode: (mode: 'chat' | 'agent' | 'teach') => void
+  setCustomInstructions: (instructions: string) => void
   resetSettings: () => void
 }
 
@@ -32,7 +34,8 @@ const initialState: Settings = {
   autoScroll: true,
   autoCollapseTools: false,
   chatMode: false,
-  appMode: 'agent'
+  appMode: 'agent',
+  customInstructions: ''
 }
 
 // Create the store with persistence
@@ -79,6 +82,16 @@ export const useSettingsStore = create<Settings & SettingsActions>()(
         })
       },
 
+      setCustomInstructions: (instructions) => {
+        set({ customInstructions: instructions })
+        // Sync to Chrome storage for background script access
+        try {
+          chrome.storage?.local?.set({ 'nxtscape-custom-instructions': instructions })
+        } catch (_e) {
+          // ignore
+        }
+      },
+
       resetSettings: () => {
         set(initialState)
         // Reset document styles
@@ -89,7 +102,7 @@ export const useSettingsStore = create<Settings & SettingsActions>()(
     }),
     {
       name: 'nxtscape-settings',  // localStorage key
-      version: 5,
+      version: 6,
       migrate: (persisted: any, version: number) => {
         // Migrate from v1 isDarkMode -> theme
         if (version === 1 && persisted) {
@@ -126,6 +139,18 @@ export const useSettingsStore = create<Settings & SettingsActions>()(
             autoScroll: typeof persisted.autoScroll === 'boolean' ? persisted.autoScroll : true,
             autoCollapseTools: typeof persisted.autoCollapseTools === 'boolean' ? persisted.autoCollapseTools : false,
             chatMode: false
+          } as Settings
+        }
+        // Migrate to v6 add customInstructions default empty string
+        if (version === 5 && persisted) {
+          return {
+            fontSize: typeof persisted.fontSize === 'number' ? persisted.fontSize : 16,
+            theme: persisted.theme === 'dark' || persisted.theme === 'gray' ? persisted.theme : 'light',
+            autoScroll: typeof persisted.autoScroll === 'boolean' ? persisted.autoScroll : true,
+            autoCollapseTools: typeof persisted.autoCollapseTools === 'boolean' ? persisted.autoCollapseTools : false,
+            chatMode: typeof persisted.chatMode === 'boolean' ? persisted.chatMode : false,
+            appMode: persisted.appMode || 'agent',
+            customInstructions: ''
           } as Settings
         }
         return persisted as Settings
