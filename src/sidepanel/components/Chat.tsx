@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { SelectTabsButton } from './SelectTabsButton'
+import { ProviderSelector } from './ProviderSelector'
 import { useChatStore } from '../stores/chatStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useAnalytics } from '../hooks/useAnalytics'
 import { ArrowDown } from 'lucide-react'
@@ -19,6 +21,7 @@ interface ChatProps {
  */
 export function Chat({ isConnected }: ChatProps) {
   const { messages, isProcessing } = useChatStore()
+  const { appMode } = useSettingsStore()
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [showSelectTabsButton, setShowSelectTabsButton] = useState(false)
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -45,6 +48,16 @@ export function Chat({ isConnected }: ChatProps) {
   return (
     <div className="flex flex-col h-full bg-background-alt">
 
+      {/* Provider Selector - shown in Chat Mode only */}
+      {appMode === 'chat' && (
+        <div className="px-4 py-2 border-b border-border/50 bg-background">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Models:</span>
+            <ProviderSelector />
+          </div>
+        </div>
+      )}
+
       {/* Main content - takes remaining space and scrolls */}
       <div className="flex-1 min-h-0">
         <ErrorBoundary
@@ -52,7 +65,7 @@ export function Chat({ isConnected }: ChatProps) {
             <div className="flex-1 flex items-center justify-center p-4">
               <div className="text-center">
                 <p className="text-red-600 dark:text-red-400 mb-2">Failed to load messages</p>
-                <button 
+                <button
                   onClick={reset}
                   className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
@@ -63,7 +76,7 @@ export function Chat({ isConnected }: ChatProps) {
           )}
         >
           <main id="main-content" className="h-full min-h-0">
-            
+
             <MessageList 
               messages={messages} 
               isProcessing={isProcessing}

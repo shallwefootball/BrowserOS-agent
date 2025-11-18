@@ -11,6 +11,7 @@ import { useCopyToClipboard } from '@/sidepanel/hooks/useCopyToClipboard'
 import { FeedbackButtons } from './feedback/FeedbackButtons'
 import { FeedbackModal } from './feedback/FeedbackModal'
 import type { FeedbackType } from '@/lib/types/feedback'
+import { MultiModelResponse, isMultiModelResponse } from './MultiModelResponse'
 
 interface MessageItemProps {
   message: Message
@@ -496,6 +497,15 @@ export const MessageItem = memo<MessageItemProps>(function MessageItem({ message
 
 
       case 'assistant':
+        // Check for multi-model response
+        if (isMultiModelResponse(message.content)) {
+          return (
+            <div className="space-y-3">
+              <MultiModelResponse content={message.content} />
+            </div>
+          )
+        }
+
         // Final results - rich markdown with emphasis
         return (
           <div className="space-y-3">

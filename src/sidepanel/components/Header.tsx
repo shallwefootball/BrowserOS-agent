@@ -41,8 +41,8 @@ export const Header = memo(function Header({ onReset, showReset, isProcessing, i
   const [providersError, setProvidersError] = useState<string | null>(null)
   const [mcpInstallStatus, setMcpInstallStatus] = useState<{ message: string; type: 'error' | 'success' } | null>(null)
   const [installedServers, setInstalledServers] = useState<any[]>([])
-  const { theme } = useSettingsStore()
-  
+  const { theme, appMode } = useSettingsStore()
+
   const handleCancel = () => {
     trackClick('pause_task')
     sendMessage(MessageType.CANCEL_TASK, {
@@ -197,7 +197,7 @@ export const Header = memo(function Header({ onReset, showReset, isProcessing, i
       >
 
         <div className="flex items-center">
-          {providersConfig && (
+          {providersConfig && appMode !== 'chat' && (
             <div className="relative mt-0.5">
               <select
                 className={`h-9 w-26 pl-2 pr-8 rounded-lg border ${theme === 'gray' ? 'border-white/40' : 'border-border'} bg-[hsl(var(--header))] text-foreground text-xs font-light appearance-none`}
@@ -247,6 +247,19 @@ export const Header = memo(function Header({ onReset, showReset, isProcessing, i
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground opacity-80" />
             </div>
+          )}
+          {appMode === 'chat' && (
+            <Button
+              onClick={handleOpenOptions}
+              variant="ghost"
+              size="sm"
+              className="h-9 px-3 rounded-xl hover:bg-brand/10 hover:text-brand smooth-hover flex items-center gap-1.5"
+              aria-label="Manage providers"
+              title="Manage providers"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="text-xs font-medium">Provider</span>
+            </Button>
           )}
         </div>
         

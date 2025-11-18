@@ -28,7 +28,9 @@ const ChatStateSchema = z.object({
     isSubmitting: z.boolean(),
     showModal: z.boolean(),
     error: z.string().nullable()
-  }))  // messageId -> UI state
+  })),  // messageId -> UI state
+  selectedProviderIds: z.array(z.string()),  // Selected provider IDs for multi-model responses
+  multiModelResponses: z.record(z.string(), z.record(z.string(), z.string()))  // msgId -> { providerId: content }
 })
 
 type ChatState = z.infer<typeof ChatStateSchema>
@@ -48,24 +50,30 @@ interface ChatActions {
   addMessage: (message: Omit<Message, 'timestamp'>) => void
   updateMessage: (msgId: string, updates: Partial<Message>) => void
   clearMessages: () => void
-  
+
   // Processing state
   setProcessing: (processing: boolean) => void
-  
+
   // Error handling
   setError: (error: string | null) => void
-  
+
   // Feedback operations
   submitFeedback: (messageId: string, type: FeedbackType, textFeedback?: string) => Promise<void>
   getFeedbackForMessage: (messageId: string) => FeedbackSubmission | null
   setFeedbackUIState: (messageId: string, state: Partial<{ isSubmitting: boolean; showModal: boolean; error: string | null }>) => void
   getFeedbackUIState: (messageId: string) => { isSubmitting: boolean; showModal: boolean; error: string | null }
-  
+
   // Plan editing
   publishPlanEditResponse: (response: { planId: string; action: 'execute' | 'cancel'; steps?: any[] }) => void
   executedPlans: Record<string, boolean>
   setPlanExecuted: (planId: string) => void
-  
+
+  // Multi-model provider selection
+  addSelectedProvider: (providerId: string) => void
+  removeSelectedProvider: (providerId: string) => void
+  setSelectedProviders: (providerIds: string[]) => void
+  updateMultiModelResponse: (msgId: string, providerId: string, content: string) => void
+
   // Reset everything
   reset: () => void
 }
@@ -77,7 +85,9 @@ const initialState: ChatState & { executedPlans: Record<string, boolean> } = {
   error: null,
   feedbacks: {},
   feedbackUI: {},
-  executedPlans: {}
+  executedPlans: {},
+  selectedProviderIds: [],  // Will be populated with default provider on first load
+  multiModelResponses: {}
 }
 
 // Create the store
@@ -152,6 +162,65 @@ export const useChatStore = create<ChatState & ChatActions>((set) => ({
   setPlanExecuted: (planId) => {
     set((state) => ({
       executedPlans: { ...state.executedPlans, [planId]: true }
+    }))
+  },
+
+  // Multi-model provider selection
+  addSelectedProvider: (providerId) => {
+    set((state) => {
+      if (state.selectedProviderIds.includes(providerId)) {
+        return state  // Already selected
+      }
+      const newIds = [...state.selectedProviderIds, providerId]
+      // Sync to Chrome storage
+      try {
+        chrome.storage?.local?.set({ 'nxtscape-selected-providers': newIds })
+      } catch (_e) {
+        // ignore
+      }
+      return {
+        selectedProviderIds: newIds
+      }
+    })
+  },
+
+  removeSelectedProvider: (providerId) => {
+    set((state) => {
+      if (state.selectedProviderIds.length <= 1) {
+        return state  // Keep at least one provider
+      }
+      const newIds = state.selectedProviderIds.filter(id => id !== providerId)
+      // Sync to Chrome storage
+      try {
+        chrome.storage?.local?.set({ 'nxtscape-selected-providers': newIds })
+      } catch (_e) {
+        // ignore
+      }
+      return {
+        selectedProviderIds: newIds
+      }
+    })
+  },
+
+  setSelectedProviders: (providerIds) => {
+    set({ selectedProviderIds: providerIds })
+    // Sync to Chrome storage for background script access
+    try {
+      chrome.storage?.local?.set({ 'nxtscape-selected-providers': providerIds })
+    } catch (_e) {
+      // ignore
+    }
+  },
+
+  updateMultiModelResponse: (msgId, providerId, content) => {
+    set((state) => ({
+      multiModelResponses: {
+        ...state.multiModelResponses,
+        [msgId]: {
+          ...state.multiModelResponses[msgId],
+          [providerId]: content
+        }
+      }
     }))
   },
 

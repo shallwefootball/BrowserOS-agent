@@ -8,6 +8,9 @@ import { PubSub } from '@/lib/pubsub'
 import { PubSubChannel } from '@/lib/pubsub/PubSubChannel'
 import { AbortError, isUserCancellation } from '@/lib/utils/Abortable'
 import { Logging } from '@/lib/utils/Logging'
+import { LLMSettingsReader } from '@/lib/llm/settings/LLMSettingsReader'
+import { LangChainProvider } from '@/lib/llm/LangChainProvider'
+import { BrowserOSProvider } from '@/lib/llm/settings/browserOSTypes'
 
 // Type definitions
 interface ExtractedPageContext {
@@ -78,6 +81,25 @@ export class ChatAgent {
         })
       } catch (_e) {
         resolve('')
+      }
+    })
+  }
+
+  /**
+   * Read selected provider IDs from Chrome storage
+   */
+  private async _getSelectedProviderIds(): Promise<string[]> {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage?.local?.get('nxtscape-selected-providers', (result) => {
+          if (result && Array.isArray(result['nxtscape-selected-providers'])) {
+            resolve(result['nxtscape-selected-providers'])
+          } else {
+            resolve([])
+          }
+        })
+      } catch (_e) {
+        resolve([])
       }
     })
   }
@@ -300,31 +322,41 @@ export class ChatAgent {
    * Stream LLM response with or without tools
    */
   private async _streamLLM(opts: { tools: boolean }): Promise<void> {
+    // Check for multi-model mode
+    const selectedProviderIds = await this._getSelectedProviderIds()
+
+    if (selectedProviderIds.length > 1) {
+      // Multi-model parallel execution
+      await this._parallelLLM(selectedProviderIds)
+      return
+    }
+
+    // Single model streaming (original behavior)
     const llm = await this.executionContext.getLLM({ temperature: 0.3, intelligence: 'high' })
-    
+
     // Only bind tools in Pass 2
     const llmToUse = opts.tools && llm.bindTools
       ? llm.bindTools(this.toolManager.getAll())
       : llm
-    
+
     // Get current messages
     const messages = this.messageManager.getMessages()
-    
+
     // Start streaming message
     const streamMsgId = PubSub.generateId('chat_stream')
-    
+
     // Stream the response
     const stream = await llmToUse.stream(messages)
-    
+
     // Accumulate chunks for final message
     const chunks: AIMessageChunk[] = []
     let fullContent = ''
-    
+
     // Stream directly to UI without "thinking" state
     for await (const chunk of stream) {
       this._checkAborted()
       chunks.push(chunk)
-      
+
       // Direct streaming to UI
       if (chunk.content) {
         fullContent += chunk.content
@@ -332,15 +364,164 @@ export class ChatAgent {
         this.pubsub.publishMessage(PubSub.createMessageWithId(streamMsgId, fullContent, 'assistant'))
       }
     }
-    
+
     // Accumulate final message for history
     const finalMessage = this._accumulateMessage(chunks)
-    
+
     // Final message with complete content
     this.pubsub.publishMessage(PubSub.createMessageWithId(streamMsgId, fullContent, 'assistant'))
-    
+
     // Add to message history
     this.messageManager.addAI(finalMessage.content as string || '')
+  }
+
+  /**
+   * Execute parallel LLM calls for multiple providers
+   */
+  private async _parallelLLM(providerIds: string[]): Promise<void> {
+    const messages = this.messageManager.getMessages()
+    const config = await LLMSettingsReader.readAllProviders()
+
+    // Get provider configs for selected IDs
+    const selectedProviders = providerIds
+      .map(id => config.providers.find(p => p.id === id))
+      .filter((p): p is BrowserOSProvider => p !== undefined)
+
+    if (selectedProviders.length === 0) {
+      throw new Error('No valid providers found')
+    }
+
+    // Start message
+    const msgId = PubSub.generateId('multi_model')
+
+    // Initialize responses with loading state for each provider
+    const responses: Record<string, string> = {}
+    const providerNameMap: Record<string, string> = {}
+
+    for (const provider of selectedProviders) {
+      const displayName = provider.modelId || provider.name
+      providerNameMap[provider.id] = displayName
+      responses[displayName] = '⏳ Loading...'
+    }
+
+    // Show initial loading state with all providers
+    const publishUpdate = () => {
+      const content = JSON.stringify({
+        __multiModel: true,
+        loading: Object.values(responses).some(r => r === '⏳ Loading...'),
+        responses
+      })
+      this.pubsub.publishMessage(PubSub.createMessageWithId(msgId, content, 'assistant'))
+    }
+
+    publishUpdate()
+
+    // Create LLM instances and call in parallel - update UI as each completes
+    const promises = selectedProviders.map(async (provider) => {
+      const displayName = providerNameMap[provider.id]
+      try {
+        this._checkAborted()
+        const llm = await this._createLLMForProvider(provider)
+        const response = await llm.invoke(messages)
+        const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content)
+        responses[displayName] = content
+        publishUpdate()  // Update UI immediately when this provider responds
+        return { providerId: provider.id, content, error: null }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        responses[displayName] = `Error: ${errorMsg}`
+        publishUpdate()  // Update UI immediately on error too
+        return { providerId: provider.id, content: null, error: errorMsg }
+      }
+    })
+
+    // Wait for all responses
+    await Promise.all(promises)
+
+    // Final publish to ensure loading is false
+    publishUpdate()
+
+    // Add first response to message history for context
+    const firstResponse = Object.values(responses).find(r => r !== '⏳ Loading...' && !r.startsWith('Error:')) || Object.values(responses)[0] || ''
+    this.messageManager.addAI(firstResponse)
+
+    Logging.log('ChatAgent', `Multi-model responses received from ${selectedProviders.length} providers`)
+  }
+
+  /**
+   * Create LLM instance for a specific provider
+   */
+  private async _createLLMForProvider(provider: BrowserOSProvider): Promise<any> {
+    // Use the same logic as LangChainProvider but for specific provider
+    const { ChatOpenAI } = await import('@langchain/openai')
+    const { ChatAnthropic } = await import('@langchain/anthropic')
+    const { ChatOllama } = await import('@langchain/ollama')
+    const { ChatGoogleGenerativeAI } = await import('@langchain/google-genai')
+
+    const temperature = provider.modelConfig?.temperature ?? 0.3
+    const maxTokens = 4096
+
+    switch (provider.type) {
+      case 'openai':
+      case 'openai_compatible':
+      case 'openrouter':
+      case 'custom':
+        return new ChatOpenAI({
+          modelName: provider.modelId || 'gpt-4o',
+          temperature,
+          maxTokens,
+          streaming: false,
+          openAIApiKey: provider.apiKey || 'nokey',
+          configuration: {
+            baseURL: provider.baseUrl || 'https://api.openai.com/v1',
+            apiKey: provider.apiKey || 'nokey',
+            dangerouslyAllowBrowser: true
+          }
+        })
+
+      case 'anthropic':
+        return new ChatAnthropic({
+          modelName: provider.modelId || 'claude-3-5-sonnet-latest',
+          temperature,
+          maxTokens,
+          streaming: false,
+          anthropicApiKey: provider.apiKey || '',
+          anthropicApiUrl: provider.baseUrl || 'https://api.anthropic.com'
+        })
+
+      case 'google_gemini':
+        return new ChatGoogleGenerativeAI({
+          model: provider.modelId || 'gemini-2.0-flash',
+          temperature,
+          maxOutputTokens: maxTokens,
+          apiKey: provider.apiKey || '',
+          convertSystemMessageToHumanContent: true,
+          baseUrl: provider.baseUrl || 'https://generativelanguage.googleapis.com'
+        })
+
+      case 'ollama':
+        return new ChatOllama({
+          model: provider.modelId || 'qwen3:4b',
+          temperature,
+          baseUrl: provider.baseUrl || 'http://127.0.0.1:11434'
+        })
+
+      case 'browseros':
+      default:
+        // Use default provider for browseros
+        return new ChatOpenAI({
+          modelName: provider.modelId || 'gpt-4o',
+          temperature,
+          maxTokens,
+          streaming: false,
+          openAIApiKey: 'nokey',
+          configuration: {
+            baseURL: 'https://llm.browseros.com/smart/',
+            apiKey: 'nokey',
+            dangerouslyAllowBrowser: true
+          }
+        })
+    }
   }
 
   /**
