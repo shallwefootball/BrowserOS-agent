@@ -2,6 +2,16 @@
 
 > **⚠️ NOTE:** This is only a submodule for the browserOS agent, the main project is at -- https://github.com/browseros-ai/BrowserOS
 
+## 설치 방법
+
+1. [Releases](https://github.com/letsur-dev/BrowserOS-agent/releases) 페이지에서 최신 버전 다운로드
+2. `browseros-agent-vX.X.X.zip` 압축 해제
+3. BrowserOS를 개발 모드로 실행 (`browseros-dev` - 아래 참고)
+4. `chrome://extensions` 접속
+5. "개발자 모드" 활성화
+6. "압축해제된 확장 프로그램 로드" 클릭
+7. 압축 해제한 폴더 선택
+
 ## 🆕 새롭게 추가된 기능
 
 ### 커스텀 인스트럭션 (Custom Instructions)
