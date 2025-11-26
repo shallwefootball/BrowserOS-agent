@@ -31,9 +31,10 @@ interface MessageListProps {
 
 // Example prompts - showcasing BrowserOS capabilities
 const CHAT_EXAMPLES = [
-  'Summarize this page',
-  'What topics does this page talk about?',
-  'Extract comments from this page',
+  '📝 Summarize this page',
+  '🗂️ Organize this page',
+  '💬 What topics does this page talk about?',
+  '📋 Extract comments from this page',
 ]
 
 const AGENT_EXAMPLES = [
